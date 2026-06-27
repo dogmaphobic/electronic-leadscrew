@@ -27,21 +27,23 @@
 #ifndef __USERINTERFACE_H
 #define __USERINTERFACE_H
 
-#include "ControlPanel.h"
+#include "Panel.h"
 #include "Core.h"
 #include "Tables.h"
 
 typedef struct MESSAGE
 {
     Uint16 message[8];
+    const char *text;
     Uint16 displayTime;
+    MESSAGE_SEVERITY severity;
     const MESSAGE *next;
 } MESSAGE;
 
 class UserInterface
 {
 private:
-    ControlPanel *controlPanel;
+    Panel *controlPanel;
     Core *core;
     FeedTableFactory *feedTableFactory;
 
@@ -63,7 +65,7 @@ private:
     void clearMessage( void );
 
 public:
-    UserInterface(ControlPanel *controlPanel, Core *core, FeedTableFactory *feedTableFactory);
+    UserInterface(Panel *controlPanel, Core *core, FeedTableFactory *feedTableFactory);
 
     void loop( void );
 

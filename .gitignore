@@ -35,3 +35,6 @@
 .jxbrowser-data
 RemoteSystemsTempFiles
 
+internal
+esp32
+teensy4.1

@@ -288,8 +288,10 @@ bool ControlPanel :: isStable(KEY_REG testKeys) {
     return this->stableCount >= MIN_CONSECUTIVE_READS;
 }
 
-void ControlPanel :: setMessage( const Uint16 *message )
+void ControlPanel :: setMessage( const Uint16 *message, const char *text, MESSAGE_SEVERITY severity )
 {
+    (void)text;
+    (void)severity;
     this->message = message;
 }
 

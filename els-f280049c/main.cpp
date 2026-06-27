@@ -31,6 +31,7 @@
 #include "EEPROM.h"
 #include "StepperDrive.h"
 #include "Encoder.h"
+#include "Nextion/NextionPanel.h"
 
 #include "Core.h"
 #include "UserInterface.h"
@@ -52,6 +53,10 @@ Debug debug;
 // Feed table factory
 FeedTableFactory feedTableFactory;
 
+#ifdef USE_NEXTION_PANEL
+// Nextion UART panel driver
+NextionPanel controlPanel;
+#else
 // Common SPI Bus driver
 SPIBus spiBus;
 
@@ -60,6 +65,7 @@ ControlPanel controlPanel(&spiBus);
 
 // EEPROM driver
 EEPROM eeprom(&spiBus);
+#endif
 
 // Encoder driver
 Encoder encoder;
@@ -118,9 +124,13 @@ void main(void)
 
     // Initialize peripherals and pins
     debug.initHardware();
+#ifdef USE_NEXTION_PANEL
+    controlPanel.initHardware();
+#else
     spiBus.initHardware();
     controlPanel.initHardware();
     eeprom.initHardware();
+#endif
     stepperDrive.initHardware();
     encoder.initHardware();
 

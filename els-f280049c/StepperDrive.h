@@ -36,6 +36,9 @@
 #define ENABLE_PIN GPIO6
 #define ALARM_PIN GPIO7
 
+#define THREAD_SHOULDER_RETRACT_TICKS \
+    (((200000L * 60L) / THREAD_SHOULDER_RETRACT_LEADSCREW_RPM) / (STEPPER_MICROSTEPS * STEPPER_RESOLUTION))
+
 #define GPIO_SET(pin) GpioDataRegs.GPASET.bit.pin = 1
 #define GPIO_CLEAR(pin) GpioDataRegs.GPACLEAR.bit.pin = 1
 #define GPIO_GET(pin) GpioDataRegs.GPADAT.bit.pin
@@ -84,6 +87,16 @@ private:
     //
     int32 desiredPosition;
 
+    bool threadingToShoulder;
+    bool movingToStart;
+    bool holdAtShoulder;
+    int32 shoulderPosition;
+    int32 startPosition;
+    int32 directionToShoulder;
+    Uint32 moveToStartDelay;
+    Uint32 moveToStartSpeed;
+    Uint32 accelTime;
+
     //
     // current state-machine state
     // bit 0 - step signal
@@ -103,6 +116,14 @@ public:
     void setDesiredPosition(int32 steps);
     void incrementCurrentPosition(int32 increment);
     void setCurrentPosition(int32 position);
+    void setShoulder(void);
+    void setStart(void);
+    void setStartOffset(int32 startOffset);
+    void beginThreadToShoulder(bool start);
+    void moveToStart(int32 stepsPerSpindleRev);
+    bool isAtShoulder(void);
+    bool isAtStart(void);
+    bool shoulderISR(int32 diff);
 
     bool checkStepBacklog();
 
@@ -121,6 +142,8 @@ inline void StepperDrive :: setDesiredPosition(int32 steps)
 inline void StepperDrive :: incrementCurrentPosition(int32 increment)
 {
     this->currentPosition += increment;
+    this->startPosition += increment;
+    this->shoulderPosition += increment;
 }
 
 inline void StepperDrive :: setCurrentPosition(int32 position)
@@ -130,7 +153,8 @@ inline void StepperDrive :: setCurrentPosition(int32 position)
 
 inline bool StepperDrive :: checkStepBacklog()
 {
-    if( abs(this->desiredPosition - this->currentPosition) > MAX_BUFFERED_STEPS ) {
+    if( !this->holdAtShoulder && !this->movingToStart &&
+        abs(this->desiredPosition - this->currentPosition) > MAX_BUFFERED_STEPS ) {
         setEnabled(false);
         return true;
     }
@@ -158,20 +182,148 @@ inline bool StepperDrive :: isAlarm()
 #endif
 }
 
+inline void StepperDrive :: setShoulder(void)
+{
+    this->shoulderPosition = this->currentPosition;
+}
+
+inline void StepperDrive :: setStart(void)
+{
+    this->startPosition = this->currentPosition;
+}
+
+inline void StepperDrive :: setStartOffset(int32 startOffset)
+{
+    if( this->directionToShoulder > 0 )
+    {
+        startOffset = -startOffset;
+    }
+
+    incrementCurrentPosition(startOffset);
+}
+
+inline void StepperDrive :: beginThreadToShoulder(bool start)
+{
+    this->threadingToShoulder = start;
+    this->directionToShoulder = this->shoulderPosition - this->startPosition;
+    this->holdAtShoulder = false;
+    this->movingToStart = false;
+
+    if( !start )
+    {
+        this->currentPosition = this->desiredPosition;
+    }
+}
+
+inline void StepperDrive :: moveToStart(int32 stepsPerSpindleRev)
+{
+    int32 diff;
+    int32 turns;
+
+    if( stepsPerSpindleRev == 0 ) return;
+
+    diff = this->desiredPosition - this->startPosition;
+    turns = diff / stepsPerSpindleRev;
+    turns += diff < 0 ? -1 : 1;
+
+    incrementCurrentPosition(turns * stepsPerSpindleRev);
+    this->moveToStartSpeed = THREAD_SHOULDER_RETRACT_TICKS * 5;
+    this->moveToStartDelay = 0;
+    this->accelTime = 0;
+    this->movingToStart = true;
+}
+
+inline bool StepperDrive :: isAtShoulder(void)
+{
+    return labs(this->currentPosition - this->shoulderPosition) <= THREAD_SHOULDER_BACKLASH_STEPS;
+}
+
+inline bool StepperDrive :: isAtStart(void)
+{
+    if( this->directionToShoulder < 0 )
+    {
+        return (this->currentPosition - this->startPosition) >= -THREAD_SHOULDER_BACKLASH_STEPS;
+    }
+    return (this->currentPosition - this->startPosition) <= THREAD_SHOULDER_BACKLASH_STEPS;
+}
+
+inline bool StepperDrive :: shoulderISR(int32 diff)
+{
+    if( !this->threadingToShoulder )
+    {
+        return false;
+    }
+
+    if( this->state >= 2 )
+    {
+        return false;
+    }
+
+    if( this->movingToStart )
+    {
+        int32 dist = labs(diff);
+
+        if( !(++this->accelTime & 0x1ff) )
+        {
+            if( dist < (STEPPER_MICROSTEPS * STEPPER_RESOLUTION / 3) )
+            {
+                if( this->moveToStartSpeed < THREAD_SHOULDER_RETRACT_TICKS * 10 )
+                {
+                    this->moveToStartSpeed++;
+                }
+            }
+            else if( this->moveToStartSpeed > THREAD_SHOULDER_RETRACT_TICKS )
+            {
+                this->moveToStartSpeed--;
+            }
+        }
+
+        if( ++this->moveToStartDelay > this->moveToStartSpeed )
+        {
+            this->moveToStartDelay = 0;
+            this->movingToStart = dist > THREAD_SHOULDER_BACKLASH_STEPS;
+            return false;
+        }
+
+        return true;
+    }
+
+    {
+        int32 dist = this->desiredPosition - this->shoulderPosition;
+
+        if( (this->directionToShoulder >= 0 && dist > 0) ||
+            (this->directionToShoulder < 0 && dist < 0) )
+        {
+            this->holdAtShoulder = true;
+            return true;
+        }
+    }
+
+    this->holdAtShoulder = false;
+    return false;
+}
+
 
 inline void StepperDrive :: ISR(void)
 {
+    int32 diff = this->desiredPosition - this->currentPosition;
+
+    if( shoulderISR(diff) )
+    {
+        return;
+    }
+
     if(enabled) {
 
         switch( this->state ) {
 
         case 0:
             // Step = 0; Dir = 0
-            if( this->desiredPosition < this->currentPosition ) {
+            if( diff <= -THREAD_SHOULDER_BACKLASH_STEPS ) {
                 GPIO_SET_STEP;
                 this->state = 2;
             }
-            else if( this->desiredPosition > this->currentPosition ) {
+            else if( diff >= THREAD_SHOULDER_BACKLASH_STEPS ) {
                 GPIO_SET_DIRECTION;
                 this->state = 1;
             }
@@ -179,11 +331,11 @@ inline void StepperDrive :: ISR(void)
 
         case 1:
             // Step = 0; Dir = 1
-            if( this->desiredPosition > this->currentPosition ) {
+            if( diff >= THREAD_SHOULDER_BACKLASH_STEPS ) {
                 GPIO_SET_STEP;
                 this->state = 3;
             }
-            else if( this->desiredPosition < this->currentPosition ) {
+            else if( diff <= -THREAD_SHOULDER_BACKLASH_STEPS ) {
                 GPIO_CLEAR_DIRECTION;
                 this->state = 0;
             }

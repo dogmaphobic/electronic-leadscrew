@@ -40,7 +40,8 @@
 //================================================================================
 
 // For Imperial leadscrews: pitch in Threads Per Inch (TPI)
-#define LEADSCREW_TPI 12
+// #define LEADSCREW_TPI 12
+#define LEADSCREW_TPI 8
 
 // For metric leadscrews: pitch in hundredths of a millimeter (HMM)
 // Example: 200hmm = 2mm
@@ -64,8 +65,10 @@
 //================================================================================
 
 // Steps and microsteps
-#define STEPPER_MICROSTEPS 8
-#define STEPPER_RESOLUTION 200
+// #define STEPPER_MICROSTEPS 8
+// #define STEPPER_RESOLUTION 200
+#define STEPPER_MICROSTEPS 3
+#define STEPPER_RESOLUTION 1000
 
 // Separate step and microstep settings for feed rates.  Redefine these if your
 // lathe has a separate feed drive train with a different ratio.
@@ -96,7 +99,8 @@
 //================================================================================
 
 // Encoder resolution (counts per revolution)
-#define ENCODER_RESOLUTION 4096
+// #define ENCODER_RESOLUTION 4096
+#define ENCODER_RESOLUTION 1024
 
 // Which encoder input to use
 #define ENCODER_USE_EQEP1
@@ -158,6 +162,11 @@
 // when the buffered step count exceeds this value.
 #define MAX_BUFFERED_STEPS 100
 
+// Thread-to-shoulder behavior.  The backlash value is a deadband in motor
+// steps; the retract RPM is the commanded leadscrew speed for wizard return.
+#define THREAD_SHOULDER_BACKLASH_STEPS 2
+#define THREAD_SHOULDER_RETRACT_LEADSCREW_RPM 100
+
 
 //================================================================================
 //                               CPU / TIMING
@@ -172,6 +181,22 @@
 
 // User interface refresh rate, in Hertz
 #define UI_REFRESH_RATE_HZ 100
+
+// Nextion UART rate.
+#ifndef NEXTION_BAUD
+#define NEXTION_BAUD 115200UL
+#endif
+
+// Use the original control-panel CLK/STB pins for Nextion UART:
+//   CLK/STB path: GPIO32=LINA_TX, GPIO33=LINA_RX
+// Set to 0 to use SCIA on GPIO28/GPIO29 instead.
+#ifndef NEXTION_USE_LINA
+#define NEXTION_USE_LINA 1
+#endif
+
+// Temporary Nextion bring-up settings.
+#define NEXTION_DISABLE_STARTUP_MESSAGES 1
+#define NEXTION_DEBUG_ENCODER_POSITION 0
 
 // RPM recalculation rate, in Hz
 #define RPM_CALC_RATE_HZ 2

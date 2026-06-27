@@ -34,6 +34,15 @@ StepperDrive :: StepperDrive(void)
     //
     this->currentPosition = 0;
     this->desiredPosition = 0;
+    this->threadingToShoulder = false;
+    this->movingToStart = false;
+    this->holdAtShoulder = false;
+    this->shoulderPosition = 0;
+    this->startPosition = 0;
+    this->directionToShoulder = 0;
+    this->moveToStartDelay = 0;
+    this->moveToStartSpeed = THREAD_SHOULDER_RETRACT_TICKS;
+    this->accelTime = 0;
 
     //
     // State machine starts at state zero

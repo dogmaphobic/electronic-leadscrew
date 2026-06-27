@@ -92,6 +92,9 @@ void Encoder :: initHardware(void)
 
 Uint16 Encoder :: getRPM(void)
 {
+#if defined(NEXTION_DEBUG_ENCODER_POSITION) && NEXTION_DEBUG_ENCODER_POSITION
+    return (Uint16)(ENCODER_REGS.QPOSCNT % 10000UL);
+#else
     if(ENCODER_REGS.QFLG.bit.UTO==1)       // If unit timeout (one 10Hz period)
     {
         Uint32 current = ENCODER_REGS.QPOSLAT;
@@ -109,4 +112,5 @@ Uint16 Encoder :: getRPM(void)
     }
 
     return rpm;
+#endif
 }

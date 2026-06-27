@@ -29,66 +29,70 @@
 const MESSAGE STARTUP_MESSAGE_2 =
 {
   .message = { LETTER_E, LETTER_L, LETTER_S, DASH, ONE | POINT, FOUR | POINT, ZERO, ZERO },
-  .displayTime = UI_REFRESH_RATE_HZ * 1.5
+  .text = "ELS-1.4.00",
+  .displayTime = UI_REFRESH_RATE_HZ * 5,
+  .severity = MESSAGE_INFO
 };
 
 const MESSAGE STARTUP_MESSAGE_1 =
 {
  .message = { LETTER_C, LETTER_L, LETTER_O, LETTER_U, LETTER_G, LETTER_H, FOUR, TWO },
- .displayTime = UI_REFRESH_RATE_HZ * 1.5,
+ .text = "CLOUGH42",
+ .displayTime = UI_REFRESH_RATE_HZ * 5,
+ .severity = MESSAGE_INFO,
  .next = &STARTUP_MESSAGE_2
-};
-
-const MESSAGE SETTINGS_MESSAGE_2 =
-{
- .message = { LETTER_S, LETTER_E, LETTER_T, LETTER_T, LETTER_I, LETTER_N, LETTER_G, LETTER_S },
- .displayTime = UI_REFRESH_RATE_HZ * .5
 };
 
 const MESSAGE SETTINGS_MESSAGE_1 =
 {
  .message = { BLANK, BLANK, BLANK, LETTER_N, LETTER_O, BLANK, BLANK, BLANK },
- .displayTime = UI_REFRESH_RATE_HZ * .5,
- .next = &SETTINGS_MESSAGE_2
+ .text = "NO SETTINGS",
+ .displayTime = UI_REFRESH_RATE_HZ * 5,
+ .severity = MESSAGE_INFO
 };
 
-extern const MESSAGE BACKLOG_PANIC_MESSAGE_2;
 const MESSAGE BACKLOG_PANIC_MESSAGE_1 =
 {
  .message = { LETTER_T, LETTER_O, LETTER_O, BLANK, LETTER_F, LETTER_A, LETTER_S, LETTER_T },
- .displayTime = UI_REFRESH_RATE_HZ * .5,
- .next = &BACKLOG_PANIC_MESSAGE_2
-};
-const MESSAGE BACKLOG_PANIC_MESSAGE_2 =
-{
- .message = { BLANK, LETTER_R, LETTER_E, LETTER_S, LETTER_E, LETTER_T, BLANK, BLANK },
- .displayTime = UI_REFRESH_RATE_HZ * .5,
- .next = &BACKLOG_PANIC_MESSAGE_1
+ .text = "TOO FAST - RESET",
+ .displayTime = 0,
+ .severity = MESSAGE_ALERT
 };
 
 
 
 const Uint16 VALUE_BLANK[4] = { BLANK, BLANK, BLANK, BLANK };
 
-UserInterface :: UserInterface(ControlPanel *controlPanel, Core *core, FeedTableFactory *feedTableFactory)
+UserInterface :: UserInterface(Panel *controlPanel, Core *core, FeedTableFactory *feedTableFactory)
 {
     this->controlPanel = controlPanel;
     this->core = core;
     this->feedTableFactory = feedTableFactory;
 
-    this->metric = false; // start out with imperial
+#ifdef USE_NEXTION_PANEL
+    this->metric = true;  // Nextion UI starts in metric feed mode
+#else
+    this->metric = false; // original panel starts out with imperial
+#endif
     this->thread = false; // start out with feeds
     this->reverse = false; // start out going forward
 
     this->feedTable = NULL;
 
     this->keys.all = 0xff;
+    this->message = NULL;
+    this->messageTime = 0;
 
     // initialize the core so we start up correctly
     core->setReverse(this->reverse);
     core->setFeed(loadFeedTable());
+#ifdef USE_NEXTION_PANEL
+    core->setPowerOn(true);
+#endif
 
+#if !defined(USE_NEXTION_PANEL) || !defined(NEXTION_DISABLE_STARTUP_MESSAGES) || !NEXTION_DISABLE_STARTUP_MESSAGES
     setMessage(&STARTUP_MESSAGE_1);
+#endif
 }
 
 const FEED_THREAD *UserInterface::loadFeedTable()
@@ -128,14 +132,19 @@ void UserInterface :: overrideMessage( void )
 {
     if( this->message != NULL )
     {
+        controlPanel->setMessage(this->message->message, this->message->text, this->message->severity);
+
+        if( this->message->severity == MESSAGE_ALERT ) {
+            return;
+        }
+
         if( this->messageTime > 0 ) {
             this->messageTime--;
-            controlPanel->setMessage(this->message->message);
         }
         else {
             this->message = this->message->next;
             if( this->message == NULL )
-                controlPanel->setMessage(NULL);
+                controlPanel->setMessage(NULL, NULL, MESSAGE_INFO);
             else
                 this->messageTime = this->message->displayTime;
         }
@@ -146,7 +155,7 @@ void UserInterface :: clearMessage( void )
 {
     this->message = NULL;
     this->messageTime = 0;
-    controlPanel->setMessage(NULL);
+    controlPanel->setMessage(NULL, NULL, MESSAGE_INFO);
 }
 
 void UserInterface :: panicStepBacklog( void )
@@ -164,6 +173,10 @@ void UserInterface :: loop( void )
 
     // read keypresses from the control panel
     keys = controlPanel->getKeys();
+
+    if( keys.bit.MESSAGE_CLOSE ) {
+        clearMessage();
+    }
 
     // respond to keypresses
     if( currentRpm == 0 )
@@ -195,6 +208,35 @@ void UserInterface :: loop( void )
             {
                 setMessage(&SETTINGS_MESSAGE_1);
             }
+            if( keys.bit.CUSTOM_THREAD )
+            {
+                this->metric = true;
+                this->thread = true;
+                this->feedTable = this->feedTableFactory->getFeedTable(this->metric, this->thread);
+                this->feedTableFactory->setCustomMetricThreadPitch(this->controlPanel->getCustomPitchHundredths());
+                core->setFeed(this->feedTable->current());
+            }
+            if( keys.bit.WIZARD_SET_SHOULDER )
+            {
+                core->setShoulder();
+            }
+            if( keys.bit.WIZARD_SET_START )
+            {
+                core->setStart();
+                core->beginThreadToShoulder(true);
+            }
+            if( keys.bit.WIZARD_MOVE_TO_START )
+            {
+                if( this->controlPanel->getWizardStarts() > 1 )
+                {
+                    core->setStartOffset(1.0f / (float)this->controlPanel->getWizardStarts());
+                }
+                core->moveToStart();
+            }
+            if( keys.bit.WIZARD_END )
+            {
+                core->beginThreadToShoulder(false);
+            }
         }
     }
 
@@ -224,6 +266,7 @@ void UserInterface :: loop( void )
     controlPanel->setLEDs(calculateLEDs());
     controlPanel->setValue(feedTable->current()->display);
     controlPanel->setRPM(currentRpm);
+    controlPanel->setWizardStatus(core->isAtShoulder(), core->isAtStart());
 
     if( ! core->isPowerOn() )
     {

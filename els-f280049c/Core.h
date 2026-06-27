@@ -66,6 +66,13 @@ public:
 
     bool isPowerOn();
     void setPowerOn(bool);
+    void setShoulder(void);
+    void setStart(void);
+    void setStartOffset(float normalizedAngleOffset);
+    void beginThreadToShoulder(bool start);
+    void moveToStart(void);
+    bool isAtShoulder(void);
+    bool isAtStart(void);
 
     void ISR( void );
 };
@@ -101,6 +108,51 @@ inline int32 Core :: feedRatio(Uint32 count)
 #else // USE_FLOATING_POINT
     return ((long long)count) * feed->numerator / feed->denominator * feedDirection;
 #endif // USE_FLOATING_POINT
+}
+
+inline void Core :: setShoulder(void)
+{
+    this->stepperDrive->setShoulder();
+}
+
+inline void Core :: setStart(void)
+{
+    this->stepperDrive->setStart();
+}
+
+inline void Core :: setStartOffset(float normalizedAngleOffset)
+{
+#ifdef USE_FLOATING_POINT
+    int32 offset = (int32)(((float)ENCODER_RESOLUTION) * normalizedAngleOffset * this->feed);
+#else
+    int32 offset = (int32)((((long long)ENCODER_RESOLUTION) * this->feed->numerator * normalizedAngleOffset) / this->feed->denominator);
+#endif
+    this->stepperDrive->setStartOffset(offset);
+}
+
+inline void Core :: beginThreadToShoulder(bool start)
+{
+    this->stepperDrive->beginThreadToShoulder(start);
+}
+
+inline void Core :: moveToStart(void)
+{
+#ifdef USE_FLOATING_POINT
+    int32 stepsPerSpindleRev = (int32)(((float)ENCODER_RESOLUTION) * this->feed);
+#else
+    int32 stepsPerSpindleRev = (int32)((((long long)ENCODER_RESOLUTION) * this->feed->numerator) / this->feed->denominator);
+#endif
+    this->stepperDrive->moveToStart(stepsPerSpindleRev);
+}
+
+inline bool Core :: isAtShoulder(void)
+{
+    return this->stepperDrive->isAtShoulder();
+}
+
+inline bool Core :: isAtStart(void)
+{
+    return this->stepperDrive->isAtStart();
 }
 
 inline void Core :: ISR( void )

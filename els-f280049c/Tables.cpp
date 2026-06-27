@@ -207,6 +207,23 @@ const FEED_THREAD metric_feed_table[] =
 };
 
 
+static Uint16 digitToSymbol(Uint16 digit)
+{
+    switch( digit )
+    {
+    case 0: return ZERO;
+    case 1: return ONE;
+    case 2: return TWO;
+    case 3: return THREE;
+    case 4: return FOUR;
+    case 5: return FIVE;
+    case 6: return SIX;
+    case 7: return SEVEN;
+    case 8: return EIGHT;
+    default: return NINE;
+    }
+}
+
 
 
 
@@ -215,15 +232,34 @@ FeedTable::FeedTable(const FEED_THREAD *table, Uint16 numRows, Uint16 defaultSel
     this->table = table;
     this->numRows = numRows;
     this->selectedRow = defaultSelection;
+    this->customEnabled = false;
+    this->customFeed.display[0] = BLANK;
+    this->customFeed.display[1] = ONE | POINT;
+    this->customFeed.display[2] = ZERO;
+    this->customFeed.display[3] = ZERO;
+    this->customFeed.leds.all = LED_THREAD | LED_MM;
+    this->customFeed.numerator = HMM_NUMERATOR(100);
+    this->customFeed.denominator = HMM_DENOMINATOR(100);
 }
 
 const FEED_THREAD *FeedTable :: current(void)
 {
+    if( this->customEnabled )
+    {
+        return &this->customFeed;
+    }
+
     return &table[selectedRow];
 }
 
 const FEED_THREAD *FeedTable :: next(void)
 {
+    if( this->customEnabled )
+    {
+        this->customEnabled = false;
+        return this->current();
+    }
+
     if( this->selectedRow < this->numRows - 1 )
     {
         this->selectedRow++;
@@ -233,11 +269,58 @@ const FEED_THREAD *FeedTable :: next(void)
 
 const FEED_THREAD *FeedTable :: previous(void)
 {
+    if( this->customEnabled )
+    {
+        this->customEnabled = false;
+        return this->current();
+    }
+
     if( this->selectedRow > 0 )
     {
         this->selectedRow--;
     }
     return this->current();
+}
+
+void FeedTable :: setCustomMetricThreadPitch(Uint16 pitchHundredths)
+{
+    Uint16 whole;
+    Uint16 fraction;
+
+    if( pitchHundredths < 10 ) pitchHundredths = 10;
+    if( pitchHundredths > 100 ) pitchHundredths = 100;
+
+    whole = pitchHundredths / 100;
+    fraction = pitchHundredths % 100;
+
+    if( whole >= 10 )
+    {
+        this->customFeed.display[0] = ONE;
+        this->customFeed.display[1] = ZERO | POINT;
+    }
+    else if( whole > 0 )
+    {
+        this->customFeed.display[0] = BLANK;
+        this->customFeed.display[1] = digitToSymbol(whole) | POINT;
+    }
+    else
+    {
+        this->customFeed.display[0] = BLANK;
+        this->customFeed.display[1] = POINT;
+    }
+
+    this->customFeed.display[2] = digitToSymbol(fraction / 10);
+    this->customFeed.display[3] = digitToSymbol(fraction % 10);
+
+    this->customFeed.leds.all = LED_THREAD | LED_MM;
+    this->customFeed.numerator = HMM_NUMERATOR(pitchHundredths);
+    this->customFeed.denominator = HMM_DENOMINATOR(pitchHundredths);
+    this->customEnabled = true;
+}
+
+void FeedTable :: clearCustom(void)
+{
+    this->customEnabled = false;
 }
 
 FeedTableFactory::FeedTableFactory(void):
@@ -273,4 +356,9 @@ FeedTable *FeedTableFactory::getFeedTable(bool metric, bool thread)
         }
     }
 
+}
+
+void FeedTableFactory::setCustomMetricThreadPitch(Uint16 pitchHundredths)
+{
+    this->metricThreads.setCustomMetricThreadPitch(pitchHundredths);
 }

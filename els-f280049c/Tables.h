@@ -29,7 +29,7 @@
 
 #include "F28x_Project.h"
 #include "Configuration.h"
-#include "ControlPanel.h"
+#include "Panel.h"
 
 
 
@@ -49,6 +49,8 @@ private:
     const FEED_THREAD *table;
     Uint16 selectedRow;
     Uint16 numRows;
+    bool customEnabled;
+    FEED_THREAD customFeed;
 
 public:
     FeedTable(const FEED_THREAD *table, Uint16 numRows, Uint16 defaultSelection);
@@ -56,6 +58,8 @@ public:
     const FEED_THREAD *current(void);
     const FEED_THREAD *next(void);
     const FEED_THREAD *previous(void);
+    void setCustomMetricThreadPitch(Uint16 pitchHundredths);
+    void clearCustom(void);
 };
 
 
@@ -71,6 +75,7 @@ public:
     FeedTableFactory(void);
 
     FeedTable *getFeedTable(bool metric, bool thread);
+    void setCustomMetricThreadPitch(Uint16 pitchHundredths);
 };
 
 
